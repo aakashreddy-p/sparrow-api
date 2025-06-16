@@ -14,6 +14,7 @@ import { Type } from "class-transformer";
 import {
   TestflowEdges,
   TestflowNodes,
+  TestFlowRunHistory,
 } from "@src/modules/common/models/testflow.model";
 
 /**
@@ -74,6 +75,32 @@ export class CreateTestflowDto {
   @ValidateNested({ each: true })
   @IsOptional()
   nodes?: TestflowNodes[];
+
+  @ApiProperty({
+    required: false,
+    example: [
+      {
+        expand: false,
+        failedRequests: 1,
+        requests: [
+          {
+            method: "GET",
+            name: "main-one",
+            status: "200 OK",
+            time: "1.22 sec",
+          },
+        ],
+        status: "fail",
+        successRequests: 1,
+        totalTime: "1.22 sec",
+      },
+    ],
+  })
+  @IsArray()
+  @Type(() => TestflowNodes)
+  @ValidateNested({ each: true })
+  @IsOptional()
+  runHistory: TestFlowRunHistory[];
 }
 
 /**
@@ -129,4 +156,30 @@ export class UpdateTestflowDto {
   @ValidateNested({ each: true })
   @IsOptional()
   nodes?: TestflowNodes[];
+
+  @ApiProperty({
+    required: false,
+    example: [
+      {
+        expand: false,
+        failedRequests: 1,
+        requests: [
+          {
+            method: "GET",
+            name: "main-one",
+            status: "200 OK",
+            time: "1.22 sec",
+          },
+        ],
+        status: "fail",
+        successRequests: 1,
+        totalTime: "1.22 sec",
+      },
+    ],
+  })
+  @IsArray()
+  @Type(() => TestflowNodes)
+  @ValidateNested({ each: true })
+  @IsOptional()
+  runHistory: TestFlowRunHistory[];
 }

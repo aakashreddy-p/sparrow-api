@@ -225,6 +225,12 @@ export class Testflow {
   @IsOptional()
   nodes: TestflowNodes[];
 
+  @IsArray()
+  @Type(() => TestFlowRunHistory)
+  @ValidateNested({ each: true })
+  @IsOptional()
+  runHistory?: TestFlowRunHistory[];
+
   @IsDate()
   @IsOptional()
   createdAt?: Date;
@@ -254,4 +260,67 @@ export class TestflowInfoDto {
   @IsNotEmpty()
   @IsOptional()
   name?: string;
+}
+
+/**
+ * Represents a Testflow Run history.
+ */
+export class TestFlowRunHistory {
+  @IsBoolean()
+  @IsOptional()
+  expand?: boolean;
+
+  @IsString()
+  @IsNotEmpty()
+  failedRequests: string;
+
+  @IsArray()
+  @IsOptional()
+  requests?: testflowHistoryRequest[];
+
+  @IsString()
+  @IsNotEmpty()
+  status: string;
+
+  @IsNumber()
+  @IsNotEmpty()
+  successRequests: number;
+
+  @IsString()
+  @IsNotEmpty()
+  totalTime: string;
+
+  @IsDate()
+  @IsOptional()
+  createdAt?: Date;
+
+  @IsDate()
+  @IsOptional()
+  updatedAt?: Date;
+
+  @IsString()
+  @IsOptional()
+  createdBy?: string;
+
+  @IsString()
+  @IsOptional()
+  updatedBy?: string;
+}
+
+export class testflowHistoryRequest {
+  @IsString()
+  @IsOptional()
+  method?: string;
+
+  @IsString()
+  @IsOptional()
+  name?: string;
+
+  @IsString()
+  @IsOptional()
+  status?: string;
+
+  @IsString()
+  @IsOptional()
+  time: string;
 }

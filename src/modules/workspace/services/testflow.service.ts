@@ -74,6 +74,7 @@ export class TestflowService {
       workspaceId: createTestflowDto.workspaceId,
       nodes: createTestflowDto.nodes,
       edges: createTestflowDto.edges,
+      runHistory: createTestflowDto.runHistory,
       createdBy: user._id.toString(),
       updatedBy: user._id.toString(),
       createdAt: new Date(),
