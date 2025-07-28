@@ -20,10 +20,11 @@ import { ErrorMessages } from "@src/modules/common/enum/error-messages.enum";
 import hbs = require("nodemailer-express-handlebars");
 import path from "path";
 import { TeamService } from "./team.service";
-import { ContextService } from "@src/modules/common/services/context.service";
+
 import { EmailService } from "@src/modules/common/services/email.service";
 import { VerificationPayload } from "../payloads/verification.payload";
 import { HubSpotService } from "./hubspot.service";
+import { DecodedUserObject } from "@src/types/fastify";
 export interface IGenericMessageBody {
   message: string;
 }
@@ -37,7 +38,6 @@ export class UserService {
     private readonly configService: ConfigService,
     private readonly authService: AuthService,
     private readonly teamService: TeamService,
-    private readonly contextService: ContextService,
     private readonly emailService: EmailService,
     private readonly hubspotService: HubSpotService,
   ) {}
@@ -47,8 +47,11 @@ export class UserService {
    * @param {string} id
    * @returns {Promise<IUser>} queried user data
    */
-  async getUserById(id: string): Promise<WithId<User>> {
-    const data = await this.userRepository.getUserById(id);
+  async getUserById(
+    id: string,
+    user?: DecodedUserObject,
+  ): Promise<DecodedUserObject> {
+    const data = await this.userRepository.getUserById(id, user);
     return data;
   }
 
@@ -105,14 +108,20 @@ export class UserService {
    */
   async createUser(payload: RegisterPayload) {
     payload.email = payload.email.toLowerCase();
-    const user = await this.getUserByEmail(payload.email);
-    if (user) {
+    const userExist = await this.getUserByEmail(payload.email);
+    if (userExist) {
       throw new BadRequestException(
         "The account with the provided email currently exists. Please choose another one.",
       );
     }
+    const user = await this.userRepository.createUser(payload);
 
-    await this.userRepository.createUser(payload);
+    const userData = {
+      _id: user.insertedId,
+      name: payload.name,
+      email: payload.email,
+      role: "",
+    };
 
     const data = {
       isUserCreated: true,
@@ -123,11 +132,56 @@ export class UserService {
       name: firstName + this.configService.get("app.defaultTeamNameSuffix"),
       firstTeam: true,
     };
-    await this.teamService.create(teamName);
+    await this.teamService.create(teamName, userData);
     // Disabling the welcome email due to hubspot integration
     // await this.sendSignUpEmail(firstName, payload.email);
     await this.sendUserVerificationEmail({ email: payload.email });
     return data;
+  }
+
+  /**
+   * Create a verified user with RegisterPayload fields
+   * @param {RegisterPayload} payload user payload
+   * @returns {Promise<IUser>} tokens
+   */
+  async createVerifiedUser(payload: RegisterPayload) {
+    payload.email = payload.email.toLowerCase();
+    const userExist = await this.getUserByEmail(payload.email);
+    if (userExist) {
+      throw new BadRequestException(
+        "The account with the provided email currently exists. Please choose another one.",
+      );
+    }
+    const user = await this.userRepository.createVerifiedUser(payload);
+
+    const userData = {
+      _id: user.insertedId,
+      name: payload.name,
+      email: payload.email,
+      role: "",
+    };
+
+    const firstName = await this.getFirstName(payload.name);
+    const teamName = {
+      name: firstName + this.configService.get("app.defaultTeamNameSuffix"),
+      firstTeam: true,
+    };
+    await this.teamService.create(teamName, userData);
+    const tokenPromises = [
+      this.authService.createToken(userData._id),
+      this.authService.createRefreshToken(userData._id),
+    ];
+    const [accessToken, refreshToken] = await Promise.all(tokenPromises);
+    const tokenData = {
+      accessToken,
+      refreshToken,
+    };
+    // Disabling the welcome email due to hubspot integration
+    // await this.sendSignUpEmail(firstName, payload.email);
+    // if (!payload?.isUserAlreadyVerified) {
+    //   await this.sendUserVerificationEmail({ email: payload.email });
+    // }
+    return tokenData;
   }
 
   /**
@@ -139,8 +193,13 @@ export class UserService {
   async updateUser(
     userId: string,
     payload: Partial<UpdateUserDto>,
-  ): Promise<WithId<User>> {
-    const data = await this.userRepository.updateUser(userId, payload);
+    currentUser: DecodedUserObject,
+  ): Promise<DecodedUserObject> {
+    const data = await this.userRepository.updateUser(
+      userId,
+      payload,
+      currentUser,
+    );
     return data;
   }
 
@@ -390,14 +449,16 @@ export class UserService {
       _id: createdUser.insertedId,
       name: name,
       email: email,
+      role: "",
+      teams: [] as any[],
+      workspaces: [] as any[],
     };
-    this.contextService.set("user", user);
     const firstName = await this.getFirstName(name);
     const teamName = {
       name: firstName + this.configService.get("app.defaultTeamNameSuffix"),
       firstTeam: true,
     };
-    await this.teamService.create(teamName);
+    await this.teamService.create(teamName, user);
     return createdUser;
   }
 
@@ -540,7 +601,6 @@ export class UserService {
     }
     if (magicCode === user.magicCode) {
       await this.userRepository.updateUserMagicCodeStatus(email);
-      this.contextService.set("user", user);
     }
     const tokenPromises = [
       this.authService.createToken(user._id),
@@ -578,5 +638,18 @@ export class UserService {
   }
   async updateLastActive(userId: string) {
     await this.userRepository.updateLastActiveQuietly(userId);
+  }
+
+  /**
+   * Returns the isUserTrialExhausted property for the given user email.
+   * @param email - user's email
+   * @returns boolean
+   */
+  async getUserTrialExhaustedStatus(email: string): Promise<boolean> {
+    const user = await this.getUserByEmail(email.toLowerCase());
+    if (!user) {
+      throw new BadRequestException("User does not exist");
+    }
+    return user.isUserTrialExhausted ?? false;
   }
 }

@@ -10,6 +10,8 @@ import { UpdatesController } from "./controllers/updates.controller";
 import { AiAssistantController } from "./controllers/ai-assistant.controller";
 import { ChatbotStatsController } from "./controllers/chatbot-stats.controller";
 import { TestflowController } from "./controllers/testflow.controller";
+import { SalesEmailController } from "./controllers/sales-email.controller";
+import { PricingController } from "./controllers/pricing.controller";
 
 // ---- Repository
 import { WorkspaceRepository } from "./repositories/workspace.repository";
@@ -22,9 +24,12 @@ import { UpdatesRepository } from "./repositories/updates.repository";
 import { AiAssistantRepository } from "./repositories/ai-assistant.repository";
 import { ChatbotStatsRepository } from "./repositories/chatbot-stats.repositoy";
 import { TestflowRepository } from "./repositories/testflow.repository";
+import { SalesEmailRepository } from "./repositories/sales-email.repository";
+import { PricingRepository } from "./repositories/pricing.repository";
 
 // ---- Module
 import { IdentityModule } from "../identity/identity.module";
+import { BillingModule } from "../billing/billing.module";
 
 // ---- Handler
 import { WorkspaceHandler } from "./handlers/workspace.handler";
@@ -50,6 +55,8 @@ import { AiAssistantService } from "./services/ai-assistant.service";
 import { ChatbotStatsService } from "./services/chatbot-stats.service";
 import { TestflowService } from "./services/testflow.service";
 import { TeamUserService } from "../identity/services/team-user.service";
+import { SalesEmailService } from "./services/sales-email.service";
+import { PricingService } from "./services/pricing.repository";
 
 // ---- Gateway
 import {
@@ -58,17 +65,23 @@ import {
 } from "./controllers/ai-assistant.gateway";
 import { AiLogHandler } from "./handlers/ai-log.handler";
 import { AiLogService } from "./services/ai-log.service";
-import { ConsumerService } from "../common/services/kafka/consumer.service";
+import { ConsumerService } from "../common/services/event-consumer.service";
 import { AiLogRepository } from "./repositories/ai-log.repository";
 import { MockServerController } from "./controllers/mock-server.controller";
 import { MockServerService } from "./services/mock-server.service";
+import { UserLimitService } from "./services/userLimit.service";
+import { UserLimitRepository } from "./repositories/userLimit.repository";
+import { LlmConversationService } from "./services/llm-conversation.service";
+import { LlmConversationRepository } from "./repositories/llm-conversation.repository";
+import { LlmConversationController } from "./controllers/llm-conversation.controller";
+import { EncryptionService } from "../common/services/encryption.service";
 
 /**
  * Workspace Module provides all necessary services, handlers, repositories,
  * and controllers related to the workspace functionality.
  */
 @Module({
-  imports: [IdentityModule],
+  imports: [IdentityModule, BillingModule.register()],
   providers: [
     WorkspaceService,
     WorkspaceRepository,
@@ -105,9 +118,18 @@ import { MockServerService } from "./services/mock-server.service";
     TestflowRepository,
     AiLogHandler,
     AiLogService,
+    LlmConversationService,
+    LlmConversationRepository,
     AiLogRepository,
     ConsumerService,
     MockServerService,
+    UserLimitService,
+    UserLimitRepository,
+    SalesEmailService,
+    SalesEmailRepository,
+    EncryptionService,
+    PricingService,
+    PricingRepository,
   ],
   exports: [
     CollectionService,
@@ -127,6 +149,12 @@ import { MockServerService } from "./services/mock-server.service";
     ChatbotStatsRepository,
     TestflowService,
     TestflowRepository,
+    UserLimitRepository,
+    UserLimitService,
+    SalesEmailService,
+    SalesEmailRepository,
+    PricingService,
+    PricingRepository,
   ],
   controllers: [
     WorkSpaceController,
@@ -136,9 +164,12 @@ import { MockServerService } from "./services/mock-server.service";
     FeedbackController,
     UpdatesController,
     AiAssistantController,
+    LlmConversationController,
     ChatbotStatsController,
     TestflowController,
     MockServerController,
+    SalesEmailController,
+    PricingController,
   ],
 })
 export class WorkspaceModule {}

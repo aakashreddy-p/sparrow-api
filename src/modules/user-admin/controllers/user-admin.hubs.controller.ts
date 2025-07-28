@@ -38,6 +38,9 @@ import {
   UpdateTeamDto,
 } from "@src/modules/identity/payloads/team.payload";
 import { TeamService } from "@src/modules/identity/services/team.service";
+import { ExtendedFastifyRequest } from "@src/types/fastify";
+import { CreateOrUpdateAdminHubDto } from "../payloads/hub.payload";
+import { SalesEmailService } from "@src/modules/workspace/services/sales-email.service";
 
 @Controller("api/admin")
 @ApiTags("admin hubs")
@@ -46,6 +49,7 @@ export class AdminHubsController {
   constructor(
     private readonly hubsService: AdminHubsService,
     private readonly teamService: TeamService,
+    private readonly salesEmailService: SalesEmailService,
   ) {}
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles("admin")
@@ -104,6 +108,7 @@ export class AdminHubsController {
     @Query("page") page: string = "1",
     @Query("limit") limit: string = "10",
     @Query("search") search: string = "",
+    @Query("plan") plan: string = "All",
     @Query("sortBy") sortBy: "createdAt" | "updatedAt" | "name" = "createdAt",
     @Query("sortOrder") sortOrder: "asc" | "desc" = "desc",
     @Res() res: FastifyReply,
@@ -131,6 +136,7 @@ export class AdminHubsController {
       userId,
       parsedPage || 1,
       parsedLimit || 10,
+      plan,
       search,
       {
         sortBy: validatedSortBy,
@@ -166,6 +172,16 @@ export class AdminHubsController {
         description: {
           type: "string",
         },
+        hubUrl: {
+          type: "string",
+        },
+        isTrialHub: {
+          type: "boolean",
+          default: false,
+        },
+        trialId: {
+          type: "string",
+        },
       },
     },
   })
@@ -173,12 +189,21 @@ export class AdminHubsController {
   @ApiResponse({ status: 201, description: "Hub Created Successfully" })
   @ApiResponse({ status: 400, description: "Create Hub Failed" })
   async createHub(
-    @Body() createHubDto: CreateOrUpdateTeamDto,
+    @Body() createHubDto: CreateOrUpdateAdminHubDto,
     @Res() res: FastifyReply,
     @UploadedFile() image: MemoryStorageFile,
+    @Req() request: ExtendedFastifyRequest,
   ) {
-    const data = await this.teamService.create(createHubDto, image);
+    const user = request.user;
+    const data = await this.teamService.create(createHubDto, user, image);
     const hub = await this.teamService.get(data.insertedId.toString());
+    if (createHubDto.isTrialHub === "true") {
+      const salesEmailData =
+        await this.salesEmailService.updateSalesEmailRecord(
+          createHubDto.trialId,
+          { isHubCreated: true, createdHubId: hub._id.toString() },
+        );
+    }
 
     const responseData = new ApiResponseService(
       "Hub Created",
@@ -200,10 +225,12 @@ export class AdminHubsController {
   @ApiResponse({ status: 400, description: "Fetch Team Request Failed" })
   async getTeam(@Param("teamId") teamId: string, @Res() res: FastifyReply) {
     const data = await this.teamService.get(teamId);
+    const plan = data?.plan;
+    const responseObject = { ...data, plan: plan };
     const responseData = new ApiResponseService(
       "Success",
       HttpStatusCode.OK,
-      data,
+      responseObject,
     );
     return res.status(responseData.httpStatusCode).send(responseData);
   }
@@ -230,6 +257,9 @@ export class AdminHubsController {
         description: {
           type: "string",
         },
+        hubUrl: {
+          type: "string",
+        },
       },
     },
   })
@@ -242,8 +272,10 @@ export class AdminHubsController {
     @Res() res: FastifyReply,
     @UploadedFile()
     image: MemoryStorageFile,
+    @Req() request: ExtendedFastifyRequest,
   ) {
-    await this.teamService.update(teamId, updateTeamDto, image);
+    const user = request.user;
+    await this.teamService.update(teamId, updateTeamDto, user._id, image);
     const team = await this.teamService.get(teamId);
     const responseData = new ApiResponseService(
       "Team Updated",
@@ -251,5 +283,100 @@ export class AdminHubsController {
       team,
     );
     return res.status(responseData.httpStatusCode).send(responseData);
+  }
+
+  @Get("hub-statistics")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles("admin")
+  @ApiOperation({
+    summary: "Get hub statistics with collaborator and workspace counts",
+    description:
+      "Returns collaborator count (excluding owners) and workspace count for a specific hub",
+  })
+  @ApiQuery({
+    name: "hUbId",
+    required: true,
+    type: String,
+    description: "Hub ID to get statistics for",
+  })
+  @ApiResponse({
+    status: 200,
+    description: "Hub statistics retrieved successfully",
+    schema: {
+      type: "object",
+      properties: {
+        teamId: { type: "string" },
+        teamName: { type: "string" },
+        collaboratorCount: { type: "number" },
+        workspaceCount: { type: "number" },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description: "Failed to retrieve hub statistics",
+  })
+  @ApiResponse({ status: 404, description: "hHub not found" })
+  async getTeamStatistics(
+    @Query("hubId") teamId: string,
+    @Res() res: FastifyReply,
+  ) {
+    if (!teamId) {
+      throw new UnauthorizedException("Hub ID is required");
+    }
+
+    const data = await this.hubsService.getTeamStatistics(teamId);
+
+    const responseData = new ApiResponseService(
+      "Hub statistics retrieved successfully",
+      HttpStatusCode.OK,
+      data,
+    );
+
+    return res.status(responseData.httpStatusCode).send(responseData);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles("admin")
+  @Post("hub-feedback")
+  @ApiOperation({ summary: "Submit billing feedback" })
+  @ApiResponse({ status: 201, description: "Feedback submitted successfully" })
+  async submitHubFeedback(
+    @Body() { hubId, feedback }: { hubId: string; feedback: string },
+    @Res() res: FastifyReply,
+  ) {
+    try {
+      if (!hubId || feedback === undefined) {
+        const responseData = new ApiResponseService(
+          "hubId is required and feedback must be provided",
+          HttpStatusCode.BAD_REQUEST,
+          null,
+        );
+        return res.status(HttpStatusCode.BAD_REQUEST).send(responseData);
+      }
+
+      const result = await this.hubsService.submitHubFeedback(hubId, feedback);
+
+      const responseData = new ApiResponseService(
+        "Feedback submitted successfully",
+        HttpStatusCode.CREATED,
+        result,
+      );
+
+      return res.status(HttpStatusCode.CREATED).send(responseData);
+    } catch (error) {
+      const statusCode =
+        error.message === "Hub not found"
+          ? HttpStatusCode.NOT_FOUND
+          : HttpStatusCode.BAD_REQUEST;
+
+      const responseData = new ApiResponseService(
+        error.message || "Failed to submit feedback",
+        statusCode,
+        null,
+      );
+
+      return res.status(statusCode).send(responseData);
+    }
   }
 }

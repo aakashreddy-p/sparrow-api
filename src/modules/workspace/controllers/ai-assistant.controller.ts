@@ -1,5 +1,6 @@
-import { Body, Controller, Post, Res, UseGuards } from "@nestjs/common";
+import { Body, Controller, Post, Req, Res, UseGuards, UseInterceptors } from "@nestjs/common";
 import { AiAssistantService } from "../services/ai-assistant.service";
+import { ApiConsumes, ApiBody } from '@nestjs/swagger';
 import { FastifyReply } from "fastify";
 import { HttpStatusCode } from "@src/modules/common/enum/httpStatusCode.enum";
 import { ApiResponseService } from "@src/modules/common/services/api-response.service";
@@ -13,8 +14,15 @@ import { JwtAuthGuard } from "@src/modules/common/guards/jwt-auth.guard";
 import {
   PromptPayload,
   ErrorResponsePayload,
-  ChatBotPayload
+  ChatBotPayload,
 } from "../payloads/ai-assistant.payload";
+import { UserLimitGuard } from "@src/modules/identity/guards/user-limt-guard";
+import { ExtendedFastifyRequest } from "@src/types/fastify";
+import {
+  FilesInterceptor,
+  MemoryStorageFile,
+  UploadedFiles,
+} from "@blazity/nest-file-fastify";
 
 @ApiBearerAuth()
 @ApiTags("AI Support")
@@ -24,6 +32,7 @@ export class AiAssistantController {
   /**
    * Constructor to initialize AiAssistantController with the required service.
    * @param aiAssistantService - Injected AiAssistantService to handle business logic.
+   * * @param llmConversationService - Injected LlmConversationService to handle LLM conversation logic.
    */
   constructor(private readonly aiAssistantService: AiAssistantService) {}
 
@@ -37,8 +46,14 @@ export class AiAssistantController {
   })
   @ApiResponse({ status: 400, description: "Generate AI Response Failed" })
   @Post("prompt")
-  async generate(@Body() prompt: PromptPayload, @Res() res: FastifyReply) {
-    const data = await this.aiAssistantService.generateText(prompt);
+  @UseGuards(UserLimitGuard)
+  async generate(
+    @Body() prompt: PromptPayload,
+    @Res() res: FastifyReply,
+    @Req() request: ExtendedFastifyRequest,
+  ) {
+    const user = request.user;
+    const data = await this.aiAssistantService.generateText(prompt, user);
     const response = new ApiResponseService(
       "AI Reposonse Generated",
       HttpStatusCode.CREATED,
@@ -62,17 +77,63 @@ export class AiAssistantController {
   }
 
   @Post("generate-prompt")
+  @UseGuards(UserLimitGuard)
   async GeneratePrompt(
     @Body() payload: ChatBotPayload,
     @Res() res: FastifyReply,
   ) {
     const data = await this.aiAssistantService.promptGeneration(payload);
     const response = new ApiResponseService(
-      "Prompt Generated",
+      "Prompt Generated Successfully",
       HttpStatusCode.CREATED,
       data,
     );
     return res.status(response.httpStatusCode).send(response);
   }
 
+  @Post()
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({
+    summary: 'Upload multiple documents with model name',
+    description: 'Uploads multiple document files and model name',
+  })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        docs: {
+          type: 'array',
+          items: { type: 'string', format: 'binary' },
+        },
+        model: {
+          type: 'string',
+        },
+        authKey: {
+          type: 'string',
+        },
+        modelVersion: {
+          type: 'string',
+        },
+      },
+    },
+  })
+  @UseInterceptors(FilesInterceptor('docs', 5))
+  @ApiResponse({ status: 201, description: 'Documents uploaded successfully' })
+  @ApiResponse({ status: 400, description: 'Upload failed' })
+  async uploadDocWithModel(
+    @UploadedFiles() docs: MemoryStorageFile[],
+    @Body('model') model: string,
+    @Body('authKey') authKey: string,
+    @Body('modelVersion') modelVersion: string,
+    @Res() res: FastifyReply,
+  ) {
+    const data = await this.aiAssistantService.uploadDocumentWithModel(docs, model, authKey, modelVersion);
+    const response = new ApiResponseService(
+      "Documents Uploaded Successfully",
+      HttpStatusCode.CREATED,
+      data,
+    );
+    return res.status(response.httpStatusCode).send(response);
+  }
 }

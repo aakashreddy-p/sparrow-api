@@ -14,7 +14,6 @@ export default () => ({
     imageSizeLimit: 2097152, // value in byte
     deletedAPILimitInDays: 7,
     timeToDaysDivisor: 86400000,
-    kafkaHitTimeInterval: 3000,
     refreshTokenSecretKey: process.env.REFRESH_TOKEN_SECRET_KEY,
     emailValidationCodeExpirationTime: parseInt(
       process.env.EMAIL_VALIDATION_CODE_EXPIRY_TIME,
@@ -44,9 +43,6 @@ export default () => ({
       redirectUrl: process.env.LOGIN_REDIRECT_URL,
       accessType: process.env.GOOGLE_ACCESS_TYPE,
     },
-  },
-  kafka: {
-    broker: process.env.KAFKA_BROKER,
   },
   updater: {
     updateAvailable: process.env.APP_UPDATE_AVAILABLE,
@@ -98,7 +94,11 @@ export default () => ({
     deepseekEndpoint: process.env.DEEPSEEK_ENDPOINT,
     deepseekApiKey: process.env.DEEPSEEK_API_KEY,
     deepseekApiVersion: process.env.DEEPSEEK_API_VERSION,
-    deepseekURL: "https://api.deepseek.com"
+    deepseekURL: "https://api.deepseek.com",
+    conversationLimit: 30,
+    conversationConatiner: process.env.AI_CONVERSATION_BLOB_CONTAINER,
+    encryptionSecret: process.env.ENCRYPTION_SECRET,
+    deepseekModel: process.env.DEEPSEEK_API_MODEL
   },
   hubspot: {
     hubspotEnabled: process.env.HUBSPOT_INTEGRATION_ENABLED,
@@ -119,5 +119,17 @@ export default () => ({
   sentry: {
     dsn: process.env.SENTRY_DSN_KEY,
     environment: process.env.SENTRY_APP_ENVIRONMENT,
+  },
+
+  stripe: {
+    secretKey: process.env.STRIPE_SECRET_KEY,
+    publishableKey: process.env.STRIPE_PUBLISHABLE_KEY,
+    webhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
+  },
+  sparrowAdmin: {
+    adminKey: process.env.SPARROW_ADMIN_KEY,
+  },
+  admin: {
+    baseURL: process.env.ADMIN_BASE_URL,
   },
 });

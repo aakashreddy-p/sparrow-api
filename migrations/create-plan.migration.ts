@@ -37,32 +37,36 @@ export class CreatePlanMigration implements OnModuleInit {
           active: true,
           limits: {
             workspacesPerHub: {
-              area: LimitArea.WORKSPACE,
+              area: LimitArea.HUB,
               value: 3,
             },
             testflowPerWorkspace: {
-              area: LimitArea.TESTFLOW,
+              area: LimitArea.WORKSPACE,
               value: 3,
             },
             blocksPerTestflow: {
-              area: LimitArea.BLOCK,
+              area: LimitArea.TESTFLOW,
               value: 5,
             },
             usersPerHub: {
-              area: LimitArea.BLOCK,
-              value: 3,
+              area: LimitArea.HUB,
+              value: 5,
             },
             selectiveTestflowRun: {
               area: LimitArea.TESTFLOW,
-              active: false
+              active: false,
             },
-            activeSync:{
+            activeSync: {
               area: LimitArea.COLLECTION,
-              active: false
+              active: false,
             },
             testflowRunHistory: {
-              area: LimitArea.TESTFLOW_RUNHISTORY,
+              area: LimitArea.TESTFLOW,
               value: 5,
+            },
+            aiRequestsPerMonth: {
+              area: LimitArea.AI,
+              value: 50,
             },
           },
           createdAt: new Date(),
@@ -91,32 +95,36 @@ export class CreatePlanMigration implements OnModuleInit {
           active: true,
           limits: {
             workspacesPerHub: {
-              area: LimitArea.WORKSPACE,
+              area: LimitArea.HUB,
               value: 5,
             },
             testflowPerWorkspace: {
-              area: LimitArea.TESTFLOW,
+              area: LimitArea.WORKSPACE,
               value: 10,
             },
             blocksPerTestflow: {
-              area: LimitArea.BLOCK,
+              area: LimitArea.TESTFLOW,
               value: 30,
             },
             usersPerHub: {
-              area: LimitArea.BLOCK,
+              area: LimitArea.HUB,
               value: 100000,
             },
             selectiveTestflowRun: {
               area: LimitArea.TESTFLOW,
-              active: true
+              active: true,
             },
-            activeSync:{
+            activeSync: {
               area: LimitArea.COLLECTION,
-              active: false
+              active: false,
             },
             testflowRunHistory: {
-              area: LimitArea.TESTFLOW_RUNHISTORY,
-              value: 10,
+              area: LimitArea.TESTFLOW,
+              value: 100000,
+            },
+            aiRequestsPerMonth: {
+              area: LimitArea.AI,
+              value: 200,
             },
           },
           createdAt: new Date(),
@@ -145,32 +153,36 @@ export class CreatePlanMigration implements OnModuleInit {
           active: true,
           limits: {
             workspacesPerHub: {
-              area: LimitArea.WORKSPACE,
+              area: LimitArea.HUB,
               value: 10,
             },
             testflowPerWorkspace: {
-              area: LimitArea.TESTFLOW,
+              area: LimitArea.WORKSPACE,
               value: 25,
             },
             blocksPerTestflow: {
-              area: LimitArea.BLOCK,
+              area: LimitArea.TESTFLOW,
               value: 30,
             },
             usersPerHub: {
-              area: LimitArea.BLOCK,
+              area: LimitArea.HUB,
               value: 100000,
             },
             selectiveTestflowRun: {
               area: LimitArea.TESTFLOW,
-              active: true
+              active: true,
             },
-            activeSync:{
+            activeSync: {
               area: LimitArea.COLLECTION,
-              active: true
+              active: true,
             },
             testflowRunHistory: {
-              area: LimitArea.TESTFLOW_RUNHISTORY,
-              value: 25,
+              area: LimitArea.TESTFLOW,
+              value: 100000,
+            },
+            aiRequestsPerMonth: {
+              area: LimitArea.AI,
+              value: Infinity,
             },
           },
           createdAt: new Date(),

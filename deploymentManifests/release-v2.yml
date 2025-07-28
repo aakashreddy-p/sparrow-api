@@ -17,7 +17,7 @@ spec:
         app: release-api-v2
     spec:
       containers:
-        - image: sparrowprod.azurecr.io/sparrow-api:_BUILD__ID_
+        - image: sparrowapi/sparrow-api:_BUILD__ID_
           name: release-api-v2
           imagePullPolicy: Always
           resources: {}
@@ -140,11 +140,6 @@ spec:
                 secretKeyRef:
                   name: release-api-v2-secret
                   key: GOOGLE_CLIENT_SECRET
-            - name: KAFKA_BROKER
-              valueFrom:
-                secretKeyRef:
-                  name: release-api-v2-secret
-                  key: KAFKA_BROKER
             - name: APP_UPDATE_AVAILABLE
               valueFrom:
                 secretKeyRef:
@@ -310,6 +305,51 @@ spec:
                 secretKeyRef:
                   name: release-api-v2-secret
                   key: DEEPSEEK_API_VERSION
+            - name: DEEPSEEK_API_MODEL
+              valueFrom:
+                secretKeyRef:
+                  name: release-api-v2-secret
+                  key: DEEPSEEK_API_MODEL      
+            - name: DB_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: release-api-v2-secret
+                  key: DB_NAME
+            - name: STRIPE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: release-api-v2-secret
+                  key: STRIPE_SECRET_KEY
+            - name: STRIPE_PUBLISHABLE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: release-api-v2-secret
+                  key: STRIPE_PUBLISHABLE_KEY
+            - name: STRIPE_WEBHOOK
+              valueFrom:
+                secretKeyRef:
+                  name: release-api-v2-secret
+                  key: STRIPE_WEBHOOK
+            - name: AI_CONVERSATION_BLOB_CONTAINER
+              valueFrom:
+                secretKeyRef:
+                  name: release-api-v2-secret
+                  key: AI_CONVERSATION_BLOB_CONTAINER
+            - name: ENCRYPTION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: release-api-v2-secret
+                  key: ENCRYPTION_SECRET
+            - name: SPARROW_ADMIN_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: release-api-v2-secret
+                  key: SPARROW_ADMIN_KEY
+            - name: ADMIN_BASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: release-api-v2-secret
+                  key: ADMIN_BASE_URL
 
 ---
 apiVersion: v1

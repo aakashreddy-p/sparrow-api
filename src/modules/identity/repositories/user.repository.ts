@@ -9,7 +9,8 @@ import {
   EmailServiceProvider,
   User,
 } from "@src/modules/common/models/user.model";
-import { ContextService } from "@src/modules/common/services/context.service";
+
+import { DecodedUserObject } from "@src/types/fastify";
 
 export interface IGenericMessageBody {
   message: string;
@@ -23,7 +24,6 @@ export class UserRepository {
   constructor(
     @Inject("DATABASE_CONNECTION")
     private db: Db,
-    private readonly contextService: ContextService,
   ) {}
 
   async updateLastActiveQuietly(userId: string): Promise<void> {
@@ -52,10 +52,12 @@ export class UserRepository {
    * @param {string} id
    * @returns {Promise<IUser>} queried user data
    */
-  async getUserById(id: string): Promise<WithId<User>> {
-    const authUser = this.contextService.get("user");
-    if (authUser._id.toString() === id) {
-      return authUser;
+  async getUserById(
+    id: string,
+    currentUser?: DecodedUserObject,
+  ): Promise<DecodedUserObject> {
+    if (currentUser?._id.toString() === id) {
+      return currentUser;
     }
     const _id = new ObjectId(id);
     const data = await this.db
@@ -64,7 +66,17 @@ export class UserRepository {
         { _id },
         { projection: { password: 0, verificationCode: 0, refresh_tokens: 0 } },
       );
-    return data;
+    const userObj: DecodedUserObject = {
+      _id: data._id,
+      email: data.email,
+      name: data.name,
+      role: "",
+      teams: data.teams,
+      workspaces: data.workspaces,
+      emailVerificationCodeTimeStamp: data?.emailVerificationCodeTimeStamp,
+      lastActive: data?.lastActive,
+    };
+    return userObj;
   }
 
   /**
@@ -96,23 +108,37 @@ export class UserRepository {
    * @param {RegisterPayload} payload user payload
    * @returns {Promise<IUser>} created user data
    */
-  async createUser(payload: RegisterPayload ): Promise<InsertOneResult<User>> {
+  async createUser(payload: RegisterPayload): Promise<InsertOneResult<User>> {
     const createdUser = await this.db
       .collection<User>(Collections.USER)
       .insertOne({
         ...payload,
         isEmailVerified: false,
+        isUserTrialExhausted: false,
         password: createHmac("sha256", payload.password).digest("hex"),
         teams: [],
         workspaces: [],
       });
-    const user = {
-      _id: createdUser.insertedId,
-      name: payload.name,
-      email: payload.email,
-    };
-    this.contextService.set("user", user);
+    return createdUser;
+  }
 
+  /**
+   * Create a verified user with RegisterPayload fields
+   * @param {RegisterPayload} payload user payload
+   * @returns {Promise<IUser>} created user data
+   */
+  async createVerifiedUser(
+    payload: RegisterPayload,
+  ): Promise<InsertOneResult<User>> {
+    const createdUser = await this.db
+      .collection<User>(Collections.USER)
+      .insertOne({
+        ...payload,
+        isEmailVerified: true,
+        password: createHmac("sha256", payload.password).digest("hex"),
+        teams: [],
+        workspaces: [],
+      });
     return createdUser;
   }
 
@@ -125,7 +151,8 @@ export class UserRepository {
   async updateUser(
     userId: string,
     payload: Partial<UpdateUserDto>,
-  ): Promise<WithId<User>> {
+    currentUser: DecodedUserObject,
+  ): Promise<DecodedUserObject> {
     const _id = new ObjectId(userId);
     const updatedUser = await this.db
       .collection<User>(Collections.USER)
@@ -135,7 +162,7 @@ export class UserRepository {
         "The user with that email does not exist in the system. Please try another username.",
       );
     }
-    return this.getUserById(userId);
+    return this.getUserById(userId, currentUser);
   }
 
   /**
@@ -383,5 +410,38 @@ export class UserRepository {
         },
       },
     );
+  }
+
+  /**
+   * Add applied promo code to user's array
+   */
+  async addAppliedPromoCode(
+    userId: string,
+    appliedPromoCode: {
+      id: string;
+      code: string;
+      used_on: Date;
+    },
+  ): Promise<boolean> {
+    try {
+      const _id = new ObjectId(userId);
+
+      const result = await this.db.collection<User>(Collections.USER).updateOne(
+        { _id },
+        {
+          $push: {
+            applied_promo_codes: {
+              ...appliedPromoCode,
+              id: new ObjectId(appliedPromoCode.id),
+            },
+          },
+        },
+      );
+
+      return result.modifiedCount > 0;
+    } catch (error) {
+      console.error("Error adding applied promo code to user:", error);
+      return false;
+    }
   }
 }

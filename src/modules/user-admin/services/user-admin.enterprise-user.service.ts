@@ -10,6 +10,7 @@ import { WorkspaceService } from "@src/modules/workspace/services/workspace.serv
 import { AdminUpdatesRepository } from "../repositories/user-admin.updates.repository";
 import { ObjectId } from "mongodb";
 import { AdminMembersRepository } from "../repositories/user-admin.members.repository";
+import { DecodedUserObject } from "@src/types/fastify";
 import { TeamRole } from "@src/modules/common/enum/roles.enum";
 
 @Injectable()
@@ -22,7 +23,7 @@ export class AdminUsersService {
     private readonly adminUserRepository: AdminMembersRepository,
   ) {}
 
-  async getAllUsers(userId: string) {
+  async getAllUsers(userId: string, currentUser?: DecodedUserObject) {
     const teams = await this.teamsRepo.findBasicTeamsByUserId(userId);
 
     if (!teams.length) {
@@ -80,8 +81,10 @@ export class AdminUsersService {
           };
         });
 
-        const userOrg: any = await this.userService.getUserById(user.id);
-
+        const userOrg: any = await this.userService.getUserById(
+          user.id,
+          currentUser,
+        );
         return {
           id: user.id,
           name: user.name,
@@ -89,7 +92,7 @@ export class AdminUsersService {
           teams: userTeams,
           teamsAccess: user.teams.length,
           lastActive: userOrg?.lastActive || "",
-          joinedOrg: userOrg?.emailVerificationCodeTimeStamp,
+          joinedOrg: userOrg?.emailVerificationCodeTimeStamp || "",
         };
       }),
     );
@@ -103,12 +106,16 @@ export class AdminUsersService {
     });
     return { teams: updatedFilteredTeams, users: newestUniqueUsers };
   }
-  async getUserDetails(ownerId: string, userId: string) {
+  async getUserDetails(
+    ownerId: string,
+    userId: string,
+    currentUser?: DecodedUserObject,
+  ) {
     // Fetch all required data in parallel
     const [teams, userOrg, memberWorkspaces] = await Promise.all([
       this.teamsRepo.findBasicTeamsByUserId(ownerId),
-      this.userService.getUserById(userId),
-      this.workspaceService.getAllWorkSpaces(userId),
+      this.userService.getUserById(userId, currentUser),
+      this.workspaceService.getAllWorkSpaces(userId, currentUser),
     ]);
 
     // Validate teams exist
@@ -175,16 +182,10 @@ export class AdminUsersService {
 
   async getDashboardStats(userId: string) {
     try {
-      // Get current date and first day of current month
-      const now = new Date();
-      const firstDayThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      // Get teams where user is a member or admin
+      const teams = await this.teamsRepo.findTeamsByUserId(userId);
 
-      // Get teams where user is owner or admin
-      const teams = await this.teamsRepo.findTeamsByOwnerOrAdmin(
-        userId.toString(),
-      );
-
-      if (!teams || teams.length === 0) {
+      if (!teams.data.length) {
         return {
           users: {
             total: 0,
@@ -197,12 +198,11 @@ export class AdminUsersService {
         };
       }
 
-      // Count hubs
-      const totalHubs = teams.length;
-      const newHubs = teams.filter(
-        (team) =>
-          team.createdAt && new Date(team.createdAt) >= firstDayThisMonth,
-      ).length;
+      const firstDayThisMonth = new Date(
+        new Date().getFullYear(),
+        new Date().getMonth(),
+        1,
+      );
 
       // Track unique users by their highest role - similar to graph functions
       const userHighestRoleMap = new Map<
@@ -216,7 +216,7 @@ export class AdminUsersService {
       let totalInvites = 0;
       let newInvites = 0;
 
-      teams.forEach((team) => {
+      teams.data.forEach((team) => {
         // Process users
         (team.users || []).forEach((user: any) => {
           const userId = user.id.toString();
@@ -309,8 +309,11 @@ export class AdminUsersService {
           members: memberCount,
         },
         hubs: {
-          total: totalHubs,
-          changeFromLastMonth: newHubs,
+          total: teams.data.length,
+          changeFromLastMonth: teams.data.filter(
+            (team) =>
+              team.createdAt && new Date(team.createdAt) >= firstDayThisMonth,
+          ).length,
         },
         invites: {
           total: totalInvites,

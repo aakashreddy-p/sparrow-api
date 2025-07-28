@@ -2,19 +2,20 @@ import { ApiProperty } from "@nestjs/swagger";
 import {
   IsArray,
   IsBoolean,
+  IsDateString,
   IsNotEmpty,
   IsNumber,
   IsObject,
   IsOptional,
   IsString,
   ValidateNested,
-  IsDateString,
 } from "class-validator";
 import { Type } from "class-transformer";
 import { WorkspaceDto } from "@src/modules/common/models/workspace.model";
 import { UserDto } from "@src/modules/common/models/user.model";
 import { Invite } from "@src/modules/common/models/team.model";
 import { logoDto as TeamLogoDto } from "@src/modules/common/models/team.model";
+import { LicensesDto } from "@src/modules/common/models/licenses.model";
 
 export class logoDto {
   @IsString()
@@ -100,6 +101,11 @@ export class TeamDto {
   @IsArray()
   @IsOptional()
   invites?: Invite[];
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => LicensesDto)
+  licenses?: LicensesDto;
 }
 
 export class UpdateTeamDto {
@@ -140,6 +146,63 @@ export class UpdateTeamDto {
   @IsOptional()
   @IsObject()
   logo?: logoDto;
+
+  @IsString()
+  @IsOptional()
+  hubUrl?: string;
+}
+
+export class ResponseTeam {
+  @IsString()
+  @IsNotEmpty()
+  name: string;
+
+  @IsString()
+  @IsOptional()
+  description?: string;
+
+  @IsString()
+  @IsOptional()
+  hubUrl?: string;
+
+  @IsString()
+  @IsOptional()
+  githubUrl?: string;
+
+  @IsString()
+  @IsOptional()
+  xUrl?: string;
+
+  @IsString()
+  @IsOptional()
+  linkedinUrl?: string;
+
+  @IsOptional()
+  @IsObject()
+  logo?: TeamLogoDto;
+
+  @IsArray()
+  @Type(() => UserDto)
+  @ValidateNested({ each: true })
+  users: UserDto[];
+
+  @IsArray()
+  @IsNotEmpty()
+  owner: string;
+
+  @IsDateString()
+  createdAt: Date;
+
+  @IsDateString()
+  updatedAt: Date;
+
+  @IsString()
+  @IsOptional()
+  createdBy?: string;
+
+  @IsString()
+  @IsOptional()
+  updatedBy?: string;
 }
 
 export class GetTeamDto {

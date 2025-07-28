@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import {
   CreateOrUpdateTeamDto,
-  GetTeamDto,
+  ResponseTeam,
   UpdateTeamDto,
 } from "../payloads/team.payload";
 import { TeamRepository } from "../repositories/team.repository";
@@ -13,20 +13,26 @@ import {
   WithId,
 } from "mongodb";
 import {
+  Invite,
   Team,
   TeamWithNewInviteTag,
 } from "@src/modules/common/models/team.model";
-import { ProducerService } from "@src/modules/common/services/kafka/producer.service";
+import { ProducerService } from "@src/modules/common/services/event-producer.service";
 import { TOPIC } from "@src/modules/common/enum/topic.enum";
 import { ConfigService } from "@nestjs/config";
 import { UserRepository } from "../repositories/user.repository";
-import { ContextService } from "@src/modules/common/services/context.service";
+
 import { MemoryStorageFile } from "@blazity/nest-file-fastify";
 import { TeamRole } from "@src/modules/common/enum/roles.enum";
-import { User } from "@src/modules/common/models/user.model";
 import { UserInvitesRepository } from "../repositories/userInvites.repository";
 import { PlanRepository } from "../repositories/plan.repository";
 import { EmailService } from "@src/modules/common/services/email.service";
+import { DecodedUserObject } from "@src/types/fastify";
+import { BillingAuditService } from "@src/modules/billing/services/billing-audit.service";
+import {
+  BillingActorType,
+  BillingSource,
+} from "@src/modules/common/enum/billing.enum";
 
 /**
  * Team Service
@@ -39,9 +45,9 @@ export class TeamService {
     private readonly configService: ConfigService,
     private readonly userInvitesRepository: UserInvitesRepository,
     private readonly userRepository: UserRepository,
-    private readonly contextService: ContextService,
     private readonly planRepository: PlanRepository,
     private readonly emailService: EmailService,
+    private readonly billingAuditService: BillingAuditService,
   ) {}
 
   async isImageSizeValid(size: number) {
@@ -97,6 +103,7 @@ export class TeamService {
    */
   async create(
     teamData: CreateOrUpdateTeamDto,
+    user: DecodedUserObject,
     image?: MemoryStorageFile,
   ): Promise<InsertOneResult<Team>> {
     let team;
@@ -127,7 +134,10 @@ export class TeamService {
       team = {
         name: teamData.name,
         description: teamData.description ?? "",
-        hubUrl: dynamicUrl,
+        hubUrl:
+          teamData?.hubUrl && teamData.hubUrl.length > 0
+            ? teamData.hubUrl
+            : dynamicUrl,
         linkedinUrl: "",
         xUrl: "",
         githubUrl: "",
@@ -136,7 +146,6 @@ export class TeamService {
 
     let hubPlan;
 
-    const user = await this.contextService.get("user");
     const userData = await this.userRepository.findUserByUserId(
       new ObjectId(user._id),
     );
@@ -145,13 +154,14 @@ export class TeamService {
     for (let i = 0; i < plans.length; i++) {
       if (plans[i].name === defaultHubPlan) {
         hubPlan = {
+          ...plans[i],
           id: plans[i]._id,
-          name: plans[i].name,
         };
+        delete hubPlan._id;
       }
     }
 
-    const createdTeam = await this.teamRepository.create(team, hubPlan);
+    const createdTeam = await this.teamRepository.create(team, hubPlan, user);
     const updatedUserTeams = [...userData.teams];
     updatedUserTeams.push({
       id: createdTeam.insertedId,
@@ -167,11 +177,34 @@ export class TeamService {
       new ObjectId(userData._id),
       updatedUserParams,
     );
+
+    // Record hub creation event for billing audit
+    await this.billingAuditService.recordHubCreated(
+      createdTeam.insertedId.toString(),
+      teamData.name,
+      defaultHubPlan,
+      {
+        actor: {
+          type: BillingActorType.USER,
+          id: user._id.toString(),
+          name: user.name,
+        },
+        source: BillingSource.USER_ACTION,
+        reason: "Hub/Team creation",
+      },
+      {
+        hubUrl: team.hubUrl,
+        description: team.description,
+        planLimits: hubPlan?.limits,
+      },
+    );
+
     if (teamData?.firstTeam) {
       const workspaceObj = {
         name: this.configService.get("app.defaultWorkspaceName"),
         id: createdTeam.insertedId.toString(),
         firstWorkspace: true,
+        user,
       };
       await this.producerService.produce(TOPIC.CREATE_USER_TOPIC, {
         value: JSON.stringify(workspaceObj),
@@ -187,13 +220,6 @@ export class TeamService {
    */
   async get(id: string): Promise<WithId<Team>> {
     const data = await this.teamRepository.get(id);
-    // const validInvites = data?.invites?.filter((invite) => {
-    //   if (new Date(invite?.expiresAt) > new Date()) {
-    //     return true;
-    //   }
-    //   return false;
-    // });
-    // data.invites = validInvites || [];
     data?.invites?.forEach((invite) => {
       delete invite.inviteId;
       delete invite.isAccepted;
@@ -207,7 +233,7 @@ export class TeamService {
    * @param {string} id
    * @returns {Promise<Team>} queried team data
    */
-  async getPublic(id: string): Promise<WithId<GetTeamDto>> {
+  async getPublic(id: string): Promise<WithId<ResponseTeam>> {
     const data = await this.teamRepository.get(id);
     const owner = data.users?.filter((user) => user.role === "owner") || [];
     return {
@@ -236,9 +262,10 @@ export class TeamService {
   async update(
     id: string,
     teamData: Partial<UpdateTeamDto>,
+    userId: ObjectId,
     image?: MemoryStorageFile,
   ): Promise<UpdateResult<Team>> {
-    const teamOwner = await this.isTeamOwner(id);
+    const teamOwner = await this.isTeamOwner(id, userId);
     if (!teamOwner) {
       throw new BadRequestException("You don't have Access");
     }
@@ -274,6 +301,7 @@ export class TeamService {
         githubUrl: teamData?.githubUrl ?? teamDetails.githubUrl,
         linkedinUrl: teamData?.linkedinUrl ?? teamDetails.linkedinUrl,
         xUrl: teamData?.xUrl ?? teamDetails.xUrl,
+        hubUrl: teamData?.hubUrl ?? teamDetails.hubUrl,
       };
     }
     const data = await this.teamRepository.update(id, team);
@@ -305,57 +333,98 @@ export class TeamService {
     return new Date(expiresAt) < now;
   }
 
-  async getAllTeams(userId: string): Promise<WithId<Team>[]> {
-    const user = await this.userRepository.getUserById(userId);
+  async getAllTeams(
+    userId: string,
+    currentUser: DecodedUserObject,
+  ): Promise<WithId<Team>[]> {
+    const user = await this.userRepository.getUserById(userId, currentUser);
     if (!user) {
       throw new BadRequestException(
         "The user with this id does not exist in the system",
       );
     }
-    const userWorkspaceIds = user.workspaces.map((_workspace) => {
-      return _workspace.workspaceId;
-    });
 
-    const teams: WithId<Team>[] = [];
-    for (const { id, isNewInvite } of user.teams) {
-      const teamData: WithId<TeamWithNewInviteTag> = await this.get(
-        id.toString(),
-      );
-      teamData.workspaces = teamData.workspaces.filter((_workspace) =>
-        userWorkspaceIds.includes(_workspace.id.toString()),
-      );
+    const userWorkspaceIds = user.workspaces.map((w) =>
+      w.workspaceId.toString(),
+    );
 
-      teamData.isNewInvite = isNewInvite;
+    // Collect team IDs from user.teams
+    const teamIdsFromUser = user.teams.map((t) => t.id.toString());
 
-      teams.push(teamData);
-    }
-    const existingTeams = await this.userInvitesRepository.getByEmail(
+    // Collect team IDs from invites
+    const existingInvites = await this.userInvitesRepository.getByEmail(
       user.email,
     );
-    const teamIds = existingTeams?.teamIds || [];
-    for (const teamId of teamIds) {
-      const teamData: WithId<TeamWithNewInviteTag> = await this.get(teamId);
+    const teamIdsFromInvites =
+      existingInvites?.teamIds?.map((id) => id.toString()) || [];
+
+    // Merge + deduplicate
+    const allTeamIds = [
+      ...new Set([...teamIdsFromUser, ...teamIdsFromInvites]),
+    ];
+
+    // Bulk fetch all teams
+    const teamDocs = await this.teamRepository.getTeamsByIds(allTeamIds);
+    // Map of teamId => teamData
+    const teamMap = new Map<string, WithId<Team>>();
+    for (const team of teamDocs) {
+      // Sanitize invites
+      team.invites?.forEach((invite: Invite) => {
+        delete invite.inviteId;
+        delete invite.isAccepted;
+        delete invite.workspaces;
+      });
+      teamMap.set(team._id.toString(), team);
+    }
+
+    const teams: WithId<TeamWithNewInviteTag>[] = [];
+
+    // First, process teams from user.teams
+    for (const { id, isNewInvite } of user.teams) {
+      const teamData = teamMap.get(id.toString());
+      if (!teamData) continue;
+
+      const filteredWorkspaces = teamData.workspaces.filter((w) =>
+        userWorkspaceIds.includes(w.id.toString()),
+      );
+
+      teams.push({
+        ...teamData,
+        workspaces: filteredWorkspaces,
+        isNewInvite,
+      });
+    }
+
+    // Now, process invite-based teams
+    for (const teamId of teamIdsFromInvites) {
+      const teamData = teamMap.get(teamId);
+      if (!teamData) continue;
+
       const specificInvite = teamData.invites.find(
         (invite) => invite.email === user.email,
       );
       const isValidInvite =
         specificInvite && !this.isInviteExpired(specificInvite.expiresAt);
+
       if (isValidInvite) {
-        const createdById = specificInvite.createdBy.toString();
-        const senderData = await this.userRepository.getUserById(createdById);
-        const team: any = {
-          _id: teamId,
+        const createdById = specificInvite?.createdBy?.toString();
+        let senderData;
+        if (createdById) {
+          senderData = await this.userRepository.getUserById(createdById);
+        }
+
+        teams.push({
+          _id: new ObjectId(teamId),
           logo: teamData.logo,
           name: teamData.name,
           hubUrl: teamData.hubUrl,
           plan: teamData.plan,
           workspaces: [],
           description: senderData?.name || "No creator found",
-        };
-        // Add the team object to the teams array
-        teams.push(team);
+        } as any);
       }
     }
+
     return teams;
   }
 
@@ -363,26 +432,27 @@ export class TeamService {
     return await this.teamRepository.getTeams();
   }
 
-  async isTeamOwner(id: string): Promise<boolean> {
-    const user = await this.contextService.get("user");
+  async isTeamOwner(id: string, userId: ObjectId): Promise<boolean> {
     const teamDetails = await this.teamRepository.findTeamByTeamId(
       new ObjectId(id),
     );
-    if (teamDetails.owner.toString() !== user._id.toString()) {
+    if (teamDetails.owner.toString() !== userId.toString()) {
       return false;
     }
     return true;
   }
 
-  async isTeamOwnerOrAdmin(id: ObjectId): Promise<WithId<Team>> {
+  async isTeamOwnerOrAdmin(
+    id: ObjectId,
+    currentUserId: ObjectId,
+  ): Promise<WithId<Team>> {
     const data = await this.teamRepository.findTeamByTeamId(id);
-    const userId = this.contextService.get("user")._id;
     if (data) {
-      if (data.owner.toString() === userId.toString()) {
+      if (data.owner.toString() === currentUserId.toString()) {
         return data;
       } else {
         for (const item of data.admins) {
-          if (item.toString() === userId.toString()) {
+          if (item.toString() === currentUserId.toString()) {
             return data;
           }
         }
@@ -408,7 +478,7 @@ export class TeamService {
   async disableTeamNewInvite(
     userId: string,
     teamId: string,
-    user: WithId<User>,
+    user: DecodedUserObject,
   ): Promise<Team> {
     const teams = user.teams.map((team) => {
       if (team.id.toString() === teamId) {
@@ -458,5 +528,51 @@ export class TeamService {
       const promise = [this.emailService.sendEmail(transporter, mailOptions)];
       Promise.all(promise);
     }
+  }
+
+  async doesHubUrlExist(
+    hubUrl: string,
+  ): Promise<{ isExist: boolean; isInvalid: boolean }> {
+    // Validate hubUrl format
+    try {
+      const match = hubUrl.match(/^https:\/\/([a-z0-9-]+)\.sparrowhub\.net$/);
+      let isInvalid = false;
+      if (!match) {
+        isInvalid = true;
+      }
+      const subdomain = match[1];
+      // Check if subdomain matches sanitized version
+      if (subdomain !== this.sanitizeName(subdomain)) {
+        isInvalid = true;
+      }
+      const isExist = await this.teamRepository.doesHubUrlExist(hubUrl);
+      return {
+        isExist,
+        isInvalid,
+      };
+    } catch (error) {
+      return {
+        isExist: false,
+        isInvalid: true,
+      };
+    }
+  }
+
+  async updateHubTrialAndPlan(teamId: string, userCount?: number) {
+    const teamDetails = await this.teamRepository.get(teamId);
+    if (!teamDetails) {
+      throw new BadRequestException("Team not found");
+    }
+
+    if (userCount) {
+      teamDetails.plan.limits.usersPerHub.value = userCount;
+    }
+
+    const updatedTeam = await this.teamRepository.updateTrialAndPlan(
+      teamId,
+      true,
+      teamDetails.plan,
+    );
+    return updatedTeam;
   }
 }

@@ -18,6 +18,9 @@ import { Type } from "class-transformer";
 import { UserDto } from "./user.model";
 import { ObjectId } from "mongodb";
 import { SelectedWorkspaces } from "@src/modules/identity/payloads/teamUser.payload";
+import { Plan } from "./plan.model";
+import { BillingDto } from "./billing.model";
+import { LicensesDto } from "./licenses.model";
 
 export class logoDto {
   @IsString()
@@ -37,12 +40,9 @@ export class logoDto {
   size?: number;
 }
 
-export class Plan {
+export class TeamsPlan extends Plan {
   @IsMongoId()
   id: ObjectId;
-
-  @IsString()
-  name: string;
 }
 
 export class Team {
@@ -55,11 +55,15 @@ export class Team {
   description?: string;
 
   @IsNotEmpty()
-  plan: Plan;
+  plan: TeamsPlan;
 
   @IsString()
   @IsOptional()
   hubUrl?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  isHubTrialExhausted?: boolean;
 
   @IsString()
   @IsOptional()
@@ -113,6 +117,14 @@ export class Team {
   @IsString()
   @IsOptional()
   updatedBy?: string;
+
+  @IsOptional()
+  @IsObject()
+  billing?: BillingDto;
+
+  @IsOptional()
+  @IsObject()
+  licenses?: LicensesDto;
 }
 
 export class TeamWithNewInviteTag extends Team {

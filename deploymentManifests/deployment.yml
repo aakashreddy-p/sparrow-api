@@ -161,11 +161,6 @@ spec:
                 secretKeyRef:
                   name: sparrow-api-secret
                   key: GOOGLE_CLIENT_SECRET
-            - name: KAFKA_BROKER
-              valueFrom:
-                secretKeyRef:
-                  name: sparrow-api-secret
-                  key: KAFKA_BROKER
             - name: REFRESH_TOKEN_MAX_LIMIT
               valueFrom:
                 secretKeyRef:
@@ -341,9 +336,51 @@ spec:
                 secretKeyRef:
                   name: sparrow-api-secret
                   key: DEEPSEEK_API_VERSION
-
-      imagePullSecrets:
-        - name: acr-secret
+            - name: DEEPSEEK_API_MODEL
+              valueFrom:
+                secretKeyRef:
+                  name: sparrow-api-secret
+                  key: DEEPSEEK_API_MODEL      
+            - name: DB_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: sparrow-api-secret
+                  key: DB_NAME
+            - name: STRIPE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: sparrow-api-secret
+                  key: STRIPE_SECRET_KEY
+            - name: STRIPE_PUBLISHABLE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: sparrow-api-secret
+                  key: STRIPE_PUBLISHABLE_KEY
+            - name: STRIPE_WEBHOOK
+              valueFrom:
+                secretKeyRef:
+                  name: sparrow-api-secret
+                  key: STRIPE_WEBHOOK
+            - name: AI_CONVERSATION_BLOB_CONTAINER
+              valueFrom:
+                secretKeyRef:
+                  name: sparrow-api-secret
+                  key: AI_CONVERSATION_BLOB_CONTAINER
+            - name: ENCRYPTION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: sparrow-api-secret
+                  key: ENCRYPTION_SECRET
+            - name: SPARROW_ADMIN_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: sparrow-api-secret
+                  key: SPARROW_ADMIN_KEY
+            - name: ADMIN_BASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: sparrow-api-secret
+                  key: ADMIN_BASE_URL
 
 ---
 apiVersion: v1
